@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Self-Healing SRE Agent - 実デモ・プレイブック</title>
+  <meta name="description" content="自動スキーマ修復エージェントの手動操作デモ用プレイブック。自身のデプロイ環境のURLをセットして、自動でコード修正・PRが作られる流れを体験できます。">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header>
+    <div class="container header-content">
+      <div class="logo">
+        <span class="logo-icon"></span>
+        Self-Healing SRE Agent <span style="font-size: 0.8rem; background: rgba(59, 130, 246, 0.2); padding: 0.2rem 0.5rem; border-radius: 4px; margin-left: 0.5rem; color: #60A5FA;">DEMO PLAYBOOK</span>
+      </div>
+      <div>
+        <a href="https://github.com/takaT-toho/202607-findy-hackathon-public" target="_blank" class="code-badge" style="text-decoration: none; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;">
+          <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+          GitHub Repository
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- プレイブックメイン -->
+  <main class="container">
+    
+    <!-- イントロ -->
+    <div class="playbook-hero">
+      <h1>デモ操作手順ガイド <span class="gradient-text">Playbook</span></h1>
+      <p>このページでは、デプロイ済みの実環境のURLを設定し、ご自身の手元で自己修復パイプライン（ドリフト発生 → AI自動検知・修正 → PR作成）をトリガーして検証できます。</p>
+    </div>
+
+    <!-- URL設定パネル -->
+    <div class="card config-panel">
+      <div class="config-title">
+        <span>⚙️</span> デモ環境のURL設定
+      </div>
+      <div class="config-grid">
+        <div class="config-field">
+          <label for="url-mockapi">📡 MockApi URL</label>
+          <input type="text" id="url-mockapi" class="config-input" placeholder="https://mock-api-xxxx.run.app" oninput="updateUrls()">
+        </div>
+        <div class="config-field">
+          <label for="url-targetapp">📱 TargetApp URL</label>
+          <input type="text" id="url-targetapp" class="config-input" placeholder="https://target-app-xxxx.run.app" oninput="updateUrls()">
+        </div>
+        <div class="config-field">
+          <label for="url-sreagent">🤖 SreAgent URL</label>
+          <input type="text" id="url-sreagent" class="config-input" placeholder="https://sre-agent-xxxx.run.app" oninput="updateUrls()">
+        </div>
+      </div>
+      <button class="btn-share" onclick="copyShareUrl()">
+        <span>🔗</span> この設定の共有URLをコピー
+      </button>
+    </div>
+
+    <!-- プレイブック手順 -->
+    <section class="playbook">
+      <div class="playbook-steps">
+        
+        <!-- Step 1 -->
+        <div class="card playbook-step">
+          <div class="step-num-badge">1</div>
+          <div class="step-body">
+            <h3>デモ対象のWebページを開く <span class="step-badge check">PREPARE</span></h3>
+            <p>列車運行情報アプリの画面（TargetApp）と、エージェントのログを確認するためのダッシュボード（SreAgent）を、ブラウザの別タブで開いて並べて配置します。</p>
+            <div class="step-actions">
+              <a href="#" id="link-targetapp" target="_blank" class="btn-action-link primary">📱 TargetApp を開く</a>
+              <a href="#" id="link-sreagent" target="_blank" class="btn-action-link primary">📊 SreAgent ログダッシュボードを開く</a>
+            </div>
+            <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+              ※ 現時点ではTargetAppで正常に「運行情報：山手線 正常運転（または遅れなし）」が表示されていることを確認してください。
+            </p>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="card playbook-step">
+          <div class="step-num-badge">2</div>
+          <div class="step-body">
+            <h3>スキーマ崩壊（Drift）を発生させる <span class="step-badge action">TRIGGER</span></h3>
+            <p>MockApi にリクエストを送り、応答データのスキーマを変更（フラットな遅延時間から、delays構造へのネスト）させます。</p>
+            <div class="step-actions">
+              <a href="#" id="link-trigger-drift" target="_blank" class="btn-action-link">🌐 ブラウザで開いて発火させる (useNewSchema=true)</a>
+            </div>
+            <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-secondary);">
+              または、お手元のターミナルで以下の `curl` コマンドを実行します：
+            </p>
+            <div class="cmd-box">
+              <span class="cmd-text" id="cmd-drift">curl -sS "https://mock-api-xxxx.run.app/api/transit/status?useNewSchema=true"</span>
+              <button class="btn-copy" onclick="copyCommand('cmd-drift')">COPY</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="card playbook-step">
+          <div class="step-num-badge">3</div>
+          <div class="step-body">
+            <h3>自動フェッチを待つ（または手動でトリガー） <span class="step-badge action">OBSERVE</span></h3>
+            <p>TargetAppの画面（Step 1で開いたタブ）は数秒おきに自動で運行情報を取得しています。そのため、**画面を開いたまま少し待つだけで自動的にエラーが検知され、SreAgentでの自己修復プロセスが開始されます**。</p>
+            
+            <p style="font-size: 0.9rem; color: var(--text-secondary);">
+              ※ 自動更新を待たずに即座に実行させたい場合は、以下の `curl` コマンドを実行して手動フェッチをトリガーすることもできます：
+            </p>
+            <div class="cmd-box">
+              <span class="cmd-text" id="cmd-fetch">curl -sS -X POST "https://target-app-xxxx.run.app/trigger-fetch" -d ''</span>
+              <button class="btn-copy" onclick="copyCommand('cmd-fetch')">COPY</button>
+            </div>
+            <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+              ※ コマンドを実行すると、TargetAppは `202 Accepted (Schema drift detected)` を返し、エラー通知を `SreAgent` へ即座に転送します。
+            </p>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="card playbook-step">
+          <div class="step-num-badge">4</div>
+          <div class="step-body">
+            <h3>修復完了とGitHub PRの確認 <span class="step-badge check">CONFIRM</span></h3>
+            <p>SreAgent ログダッシュボード（Step 1 で開いたページ）を確認します。30秒ほど待つと自動でAIがビルドを検証し、GitHub上に修正Pull Requestが作成されます。</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+              ※ ログイベントの最上部に `PR created: https://github.com/...` というイベントが記録されれば自己修復完了です。
+            </p>
+            <div class="step-actions">
+              <a href="https://github.com/takaT-toho/202607-findy-hackathon-public/pulls" target="_blank" class="btn-action-link primary">📂 作成された GitHub PR 一覧を確認する</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="card playbook-step">
+          <div class="step-num-badge">5</div>
+          <div class="step-body">
+            <h3>デモのクリーンアップ（スキーマの復元） <span class="step-badge check">CLEANUP</span></h3>
+            <p>デモ検証が終わったら、MockApi を再び旧スキーマに戻し、TargetAppを正常稼働状態に復元させます。</p>
+            <div class="step-actions">
+              <a href="#" id="link-trigger-restore" target="_blank" class="btn-action-link">🌐 ブラウザで開いて復元する (useNewSchema=false)</a>
+            </div>
+            <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-secondary);">
+              または、お手元のターミナルで以下の `curl` コマンドを実行します：
+            </p>
+            <div class="cmd-box">
+              <span class="cmd-text" id="cmd-restore">curl -sS "https://mock-api-xxxx.run.app/api/transit/status?useNewSchema=false"</span>
+              <button class="btn-copy" onclick="copyCommand('cmd-restore')">COPY</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- エージェント思考ログ（おさらいセクション） -->
+    <section class="agent-logs">
+      <h2 class="section-title">自律修復プロセスのおさらい (実機ログトレース)</h2>
+      <p class="section-subtitle">エラー検知からPR生成まで、SreAgentが実際に処理を行う際のイベントログ構造です（各項目を展開できます）。</p>
+
+      <div class="timeline">
+        <div class="timeline-item" onclick="toggleLog(this)">
+          <div class="timeline-dot">1</div>
+          <div class="timeline-content">
+            <div class="timeline-meta">
+              <span class="timeline-time">DETECTION</span>
+              <span class="timeline-type detect">DETECT</span>
+            </div>
+            <div class="timeline-summary">Webhook received via RealRequestPath: JsonException</div>
+            <div class="timeline-detail">
+              TargetAppのミドルウェアから例外を検知したWebhookを受信しました。
+              <pre>Message: JSON deserialization for type 'TargetApp.TrainStatus' was missing required properties including: 'delay_minutes'.</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="timeline-item" onclick="toggleLog(this)">
+          <div class="timeline-dot">2</div>
+          <div class="timeline-content">
+            <div class="timeline-meta">
+              <span class="timeline-time">TRIAGE</span>
+              <span class="timeline-type ai">AI TRIAGE</span>
+            </div>
+            <div class="timeline-summary">Classified as SchemaDrift (fixable=True, conf 95)</div>
+            <div class="timeline-detail">
+              AI（分類器）がエラーを解析し、自動修復が可能な「外部APIのスキーマ変更（Schema Drift）」であると判定。
+              <pre>判定理由: JSONの階層構造が変更され、フラットなプロパティからネストされたオブジェクトに変更されたため、デシリアライズ対象の型定義またはマッピングの修正が必要。</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="timeline-item" onclick="toggleLog(this)">
+          <div class="timeline-dot">3</div>
+          <div class="timeline-content">
+            <div class="timeline-meta">
+              <span class="timeline-time">AI CODE FIX</span>
+              <span class="timeline-type ai">AI GEN</span>
+            </div>
+            <div class="timeline-summary">AI returned fix (confidence=100)</div>
+            <div class="timeline-detail">
+              Gemini 3.1 Flash Liteがエラーログおよびソースファイルを元に、適切な修正コード案（DTOの導入とマッピングのバイパス処理）を生成しました。
+              <pre>生成内容: 期待される TrainStatus の型定義と互換性を維持するために、ネストされた delays.value 構造を受け取るための中間クラス(DTO)を導入。</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="timeline-item" onclick="toggleLog(this)">
+          <div class="timeline-dot">4</div>
+          <div class="timeline-content">
+            <div class="timeline-meta">
+              <span class="timeline-time">CODE REVIEW</span>
+              <span class="timeline-type approve">APPROVE</span>
+            </div>
+            <div class="timeline-summary">ReviewApproved: Attempt 1 approved</div>
+            <div class="timeline-detail">
+              コードレビュー用AIにより、生成された修正プログラムの安全性が確認され、コード適用が承認されました。
+              <pre>レビュー評価: The fix correctly addresses the breaking change in the JSON schema by introducing a DTO layer, preserving the public contract of the TrainStatus model.</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="timeline-item" onclick="toggleLog(this)">
+          <div class="timeline-dot">5</div>
+          <div class="timeline-content">
+            <div class="timeline-meta">
+              <span class="timeline-time">GIT AUTOMATION</span>
+              <span class="timeline-type git">GIT PR</span>
+            </div>
+            <div class="timeline-summary">PR created: GitHub Pull Request Generated</div>
+            <div class="timeline-detail">
+              修正用ブランチをリポジトリ上に作成してコミットをプッシュし、自動でPull Requestを生成・送信完了。
+              <pre>作成されたブランチ: head/fix-JsonException-8b15...
+ベースブランチ: main
+生成されたPRの宛先: takaT-toho/202607-findy-hackathon-public/pull/1</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- システム詳細（動画補足） -->
+    <section class="system-details">
+      <h2 class="section-title">アーキテクチャの解説</h2>
+      <p class="section-subtitle">自己修復エージェントを支える3つのコンポーネントとその関係性。</p>
+      
+      <div class="system-details-grid">
+        <div class="card system-detail-card">
+          <h3>📡 MockApi (Port: 5074)</h3>
+          <p>外部APIのモックスタブ。デモの中で意図的にAPIスキーマを変更（Drift）させるための司令塔です。</p>
+          <ul>
+            <li>`useNewSchema=false`: フラットなJSON構造を応答</li>
+            <li>`useNewSchema=true`: `delays` がネストした新JSON構造を応答</li>
+          </ul>
+        </div>
+        <div class="card system-detail-card">
+          <h3>📱 TargetApp (Port: 5165)</h3>
+          <p>APIクライアントである本来の運行情報アプリケーション。スキーマ変更によって発生したデシリアライズエラーをトリガーに動作します。</p>
+          <ul>
+            <li>`Reporting__Mode=Webhook` によるダイレクト通信</li>
+            <li>例外発生時の安全な代替画面表示（フォールバック）</li>
+          </ul>
+        </div>
+        <div class="card system-detail-card">
+          <h3>🤖 SreAgent (Port: 5180)</h3>
+          <p>エラー通知を受けて修復プロセスを実行する脳。自律的なコード変更とGitHub PR作成を行います。</p>
+          <ul>
+            <li>重複エラー排除 (`IDedupGate`)</li>
+            <li>Vertex AI (Gemini 3.1 Flash Lite) を用いたコード生成・レビュー</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 通知トースト -->
+  <div id="toast-message" class="toast">コピーしました！</div>
+
+  <!-- フッター -->
+  <footer>
+    <div class="container">
+      <p>&copy; 2026 takaT-toho. Built for Self-Healing SRE Agent Showcase.</p>
+      <a href="https://github.com/takaT-toho/202607-findy-hackathon-public" target="_blank">View on GitHub</a>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
